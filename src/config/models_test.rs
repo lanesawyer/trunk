@@ -2,6 +2,17 @@ use crate::config::models::*;
 
 #[cfg(not(target_family = "windows"))]
 #[test]
+fn trunk_toml_env_overrides_file_build_target() {
+    std::env::set_var("TRUNK_BUILD_TARGET", "test_index.html");
+    let cwd = std::env::current_dir().expect("error getting cwd");
+    let path = cwd.join("tests").join("data").join("good-build-target.toml");
+    let config = ConfigOpts::rtc_build(Default::default(), Some(path)).expect("should've worked");
+
+    assert_eq!(config.target.as_path().file_name().expect("it was there"), "does_not_exist.html");
+}
+
+#[cfg(not(target_family = "windows"))]
+#[test]
 fn err_bad_trunk_toml_build_target() {
     let cwd = std::env::current_dir().expect("error getting cwd");
     let path = cwd.join("tests").join("data").join("bad-build-target.toml");

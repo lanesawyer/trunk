@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use config::{Config, Environment, File};
 use http_types::Url;
 use serde::Deserialize;
 use structopt::StructOpt;
@@ -254,10 +255,20 @@ impl ConfigOpts {
                 .canonicalize()
                 .with_context(|| format!("error getting canonical path to Trunk config file {:?}", &trunk_toml_path))?;
         }
-        let cfg_bytes = std::fs::read(&trunk_toml_path).context("error reading config file")?;
-        let mut cfg: Self = toml::from_slice(&cfg_bytes).context("error reading config file contents as TOML data")?;
+
+        let mut new_cfg = Config::default();
+
+        new_cfg.merge(File::from(trunk_toml_path.clone()))?;
+        new_cfg.merge(Environment::with_prefix("trunk"))?;
+
+        println!("Using config file {:?} {:?}", trunk_toml_path, new_cfg);
+
+        let mut config_opts: ConfigOpts = new_cfg.try_into()?;
+
+        println!("Parsed {:?}", config_opts);
+
         if let Some(parent) = trunk_toml_path.parent() {
-            if let Some(build) = cfg.build.as_mut() {
+            if let Some(build) = config_opts.build.as_mut() {
                 if let Some(target) = build.target.as_mut() {
                     if !target.is_absolute() {
                         *target = std::fs::canonicalize(parent.join(&target))
@@ -270,7 +281,7 @@ impl ConfigOpts {
                     }
                 }
             }
-            if let Some(watch) = cfg.watch.as_mut() {
+            if let Some(watch) = config_opts.watch.as_mut() {
                 if let Some(watch_paths) = watch.watch.as_mut() {
                     for path in watch_paths.iter_mut() {
                         if !path.is_absolute() {
@@ -288,7 +299,7 @@ impl ConfigOpts {
                     }
                 }
             }
-            if let Some(clean) = cfg.clean.as_mut() {
+            if let Some(clean) = config_opts.clean.as_mut() {
                 if let Some(dist) = clean.dist.as_mut() {
                     if !dist.is_absolute() {
                         *dist = parent.join(&dist);
@@ -296,7 +307,7 @@ impl ConfigOpts {
                 }
             }
         }
-        Ok(cfg)
+        Ok(config_opts)
     }
 
     fn from_env() -> Result<Self> {
