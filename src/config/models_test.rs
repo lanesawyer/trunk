@@ -3,9 +3,10 @@ use crate::config::models::*;
 #[cfg(not(target_family = "windows"))]
 #[test]
 fn trunk_toml_env_overrides_file_build_target() {
-    std::env::set_var("TRUNK_BUILD_TARGET", "test_index.html");
     let cwd = std::env::current_dir().expect("error getting cwd");
     let path = cwd.join("tests").join("data").join("good-build-target.toml");
+
+    std::env::set_var("TRUNK_BUILD_TARGET", "./tests/test_index.html");
     let config = ConfigOpts::rtc_build(Default::default(), Some(path)).expect("should've worked");
 
     assert_eq!(config.target.as_path().file_name().expect("it was there"), "does_not_exist.html");
@@ -16,6 +17,7 @@ fn trunk_toml_env_overrides_file_build_target() {
 fn err_bad_trunk_toml_build_target() {
     let cwd = std::env::current_dir().expect("error getting cwd");
     let path = cwd.join("tests").join("data").join("bad-build-target.toml");
+
     let err = ConfigOpts::rtc_build(Default::default(), Some(path)).expect_err("expected config to err");
     let expected_err = format!(
         r#"error taking canonical path to [build].target "index.html" in "{}/tests/data/bad-build-target.toml""#,
@@ -29,6 +31,7 @@ fn err_bad_trunk_toml_build_target() {
 fn err_bad_trunk_toml_watch_path() {
     let cwd = std::env::current_dir().expect("error getting cwd");
     let path = cwd.join("tests").join("data").join("bad-watch-path.toml");
+
     let err = ConfigOpts::rtc_watch(Default::default(), Default::default(), Some(path)).expect_err("expected config to err");
     let expected_err = format!(
         r#"error taking canonical path to [watch].watch "fake-dir" in "{}/tests/data/bad-watch-path.toml""#,
@@ -42,6 +45,7 @@ fn err_bad_trunk_toml_watch_path() {
 fn err_bad_trunk_toml_watch_ignore() {
     let cwd = std::env::current_dir().expect("error getting cwd");
     let path = cwd.join("tests").join("data").join("bad-watch-ignore.toml");
+
     let err = ConfigOpts::rtc_watch(Default::default(), Default::default(), Some(path)).expect_err("expected config to err");
     let expected_err = format!(
         r#"error taking canonical path to [watch].ignore "fake.html" in "{}/tests/data/bad-watch-ignore.toml""#,

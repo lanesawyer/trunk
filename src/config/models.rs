@@ -4,14 +4,14 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use config::{Config, Environment, File};
 use http_types::Url;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 
 use crate::common::parse_public_url;
 use crate::config::{RtcBuild, RtcClean, RtcServe, RtcWatch};
 
 /// Config options for the build system.
-#[derive(Clone, Debug, Default, Deserialize, StructOpt)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, StructOpt)]
 pub struct ConfigOptsBuild {
     /// The index HTML file to drive the bundling process [default: index.html]
     #[structopt(parse(from_os_str))]
@@ -29,7 +29,7 @@ pub struct ConfigOptsBuild {
 }
 
 /// Config options for the watch system.
-#[derive(Clone, Debug, Default, Deserialize, StructOpt)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, StructOpt)]
 pub struct ConfigOptsWatch {
     /// Watch specific file(s) or folder(s) [default: build target parent folder]
     #[structopt(short, long, parse(from_os_str), value_name = "path")]
@@ -40,7 +40,7 @@ pub struct ConfigOptsWatch {
 }
 
 /// Config options for the serve system.
-#[derive(Clone, Debug, Default, Deserialize, StructOpt)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, StructOpt)]
 pub struct ConfigOptsServe {
     /// The port to serve on [default: 8080]
     #[structopt(long)]
@@ -65,7 +65,7 @@ pub struct ConfigOptsServe {
 }
 
 /// Config options for the serve system.
-#[derive(Clone, Debug, Default, Deserialize, StructOpt)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, StructOpt)]
 pub struct ConfigOptsClean {
     /// The output dir for all final assets [default: dist]
     #[structopt(short, long, parse(from_os_str))]
@@ -77,7 +77,7 @@ pub struct ConfigOptsClean {
 }
 
 /// Config options for automatic application downloads.
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct ConfigOptsTools {
     /// Version of `wasm-bindgen` to use.
     pub wasm_bindgen: Option<String>,
@@ -90,7 +90,7 @@ pub struct ConfigOptsTools {
 /// NOTE WELL: this configuration type is different from the others inasmuch as it is only used
 /// when parsing the `Trunk.toml` config file. It is not intended to be configured via CLI or env
 /// vars.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConfigOptsProxy {
     /// The URL of the backend to which requests are to be proxied.
     pub backend: Url,
@@ -106,7 +106,7 @@ pub struct ConfigOptsProxy {
 }
 
 /// A model of all potential configuration options for the Trunk CLI system.
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct ConfigOpts {
     pub build: Option<ConfigOptsBuild>,
     pub watch: Option<ConfigOptsWatch>,
@@ -235,17 +235,20 @@ impl ConfigOpts {
     }
 
     fn file_and_env_layers(path: Option<PathBuf>) -> Result<Self> {
-        let toml_cfg = Self::from_file(path)?;
-        let env_cfg = Self::from_env().context("error reading trunk env var config")?;
-        let cfg = Self::merge(toml_cfg, env_cfg);
-        Ok(cfg)
+        let mut toml_cfg = Self::from_file(path)?;
+        toml_cfg.merge(Environment::with_prefix("trunk").separator("_"))?;
+
+        let result = toml_cfg.try_into()?;
+
+        println!("Blah: {:?}", result);
+        Ok(result)
     }
 
     /// Read runtime config from a `Trunk.toml` file at the target path.
     ///
     /// NOTE WELL: any paths specified in a Trunk.toml file must be interpreted as being relative
     /// to the file itself.
-    fn from_file(path: Option<PathBuf>) -> Result<Self> {
+    fn from_file(path: Option<PathBuf>) -> Result<Config> {
         let mut trunk_toml_path = path.unwrap_or_else(|| "Trunk.toml".into());
         if !trunk_toml_path.exists() {
             return Ok(Default::default());
@@ -259,7 +262,6 @@ impl ConfigOpts {
         let mut new_cfg = Config::default();
 
         new_cfg.merge(File::from(trunk_toml_path.clone()))?;
-        new_cfg.merge(Environment::with_prefix("trunk"))?;
 
         println!("Using config file {:?} {:?}", trunk_toml_path, new_cfg);
 
@@ -307,22 +309,9 @@ impl ConfigOpts {
                 }
             }
         }
-        Ok(config_opts)
-    }
 
-    fn from_env() -> Result<Self> {
-        let build: ConfigOptsBuild = envy::prefixed("TRUNK_BUILD_").from_env()?;
-        let watch: ConfigOptsWatch = envy::prefixed("TRUNK_WATCH_").from_env()?;
-        let serve: ConfigOptsServe = envy::prefixed("TRUNK_SERVE_").from_env()?;
-        let clean: ConfigOptsClean = envy::prefixed("TRUNK_CLEAN_").from_env()?;
-        Ok(ConfigOpts {
-            build: Some(build),
-            watch: Some(watch),
-            serve: Some(serve),
-            clean: Some(clean),
-            tools: None,
-            proxy: None,
-        })
+        let more_cfg = Config::try_from(&config_opts)?;
+        Ok(more_cfg)
     }
 
     /// Merge the given layers, where the `greater` layer takes precedence.
